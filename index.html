@@ -1,0 +1,225 @@
+<!DOCTYPE html>
+<html lang="tr">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
+<title>Hava İstasyonum</title>
+<meta name="theme-color" content="#0E1419" />
+<link rel="manifest" href="manifest.json" />
+<meta name="apple-mobile-web-app-capable" content="yes" />
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+<meta name="apple-mobile-web-app-title" content="Hava" />
+<link rel="apple-touch-icon" href="icon.svg" />
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+<link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500;600&display=swap" rel="stylesheet" />
+<script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js"></script>
+<style>
+  :root{
+    --bg:#0E1419; --panel:#161E26; --panel-2:#1C262F; --line:#27333D;
+    --ink:#E8EDF2; --muted:#7E8B97; --muted-2:#566472; --accent:#F2A65A;
+  }
+  *{box-sizing:border-box} html,body{margin:0;padding:0}
+  body{
+    background:radial-gradient(1200px 600px at 80% -10%, rgba(242,166,90,.06), transparent 60%), var(--bg);
+    color:var(--ink); font-family:"Space Grotesk",system-ui,sans-serif;
+    -webkit-font-smoothing:antialiased; min-height:100vh;
+    padding-top:env(safe-area-inset-top);
+  }
+  .wrap{max-width:1080px;margin:0 auto;padding:20px 16px 64px}
+  header.top{display:flex;align-items:center;gap:12px;flex-wrap:wrap;margin-bottom:4px}
+  .brand{font-weight:700;font-size:21px;letter-spacing:-.01em}
+  .brand .dot{color:var(--accent)}
+  .meta{margin-left:auto;display:flex;align-items:center;gap:10px}
+  .stamp{color:var(--muted);font-size:12px;font-family:"IBM Plex Mono",monospace}
+  .live{display:inline-flex;align-items:center;gap:6px;color:var(--muted);font-size:12px}
+  .live .pulse{width:8px;height:8px;border-radius:50%;background:#5FB36A;box-shadow:0 0 0 0 rgba(95,179,106,.6);animation:p 2s infinite}
+  @keyframes p{0%{box-shadow:0 0 0 0 rgba(95,179,106,.5)}70%{box-shadow:0 0 0 7px rgba(95,179,106,0)}100%{box-shadow:0 0 0 0 rgba(95,179,106,0)}}
+  button.refresh{background:transparent;border:1px solid var(--line);color:var(--ink);border-radius:8px;padding:6px 10px;font-family:"IBM Plex Mono",monospace;font-size:12px;cursor:pointer}
+  button.refresh:hover{border-color:var(--muted)}
+
+  .tiles{display:grid;grid-template-columns:repeat(auto-fit,minmax(140px,1fr));gap:10px;margin-top:18px}
+  .tile{background:var(--panel);border:1px solid var(--line);border-radius:12px;padding:14px 14px 12px;position:relative;overflow:hidden}
+  .tile .lab{font-size:11px;letter-spacing:.08em;text-transform:uppercase;color:var(--muted)}
+  .tile .val{font-family:"IBM Plex Mono",monospace;font-size:26px;font-weight:600;margin-top:8px;line-height:1}
+  .tile .unit{font-size:13px;color:var(--muted);font-weight:500;margin-left:3px}
+  .tile .bar{position:absolute;left:0;bottom:0;height:3px;width:100%}
+
+  .panel{background:var(--panel);border:1px solid var(--line);border-radius:14px;padding:14px 16px;margin-top:16px}
+  .row{display:flex;align-items:center;gap:9px;flex-wrap:wrap}
+  .row+.row{margin-top:12px}
+  .label-min{font-size:11px;letter-spacing:.08em;text-transform:uppercase;color:var(--muted-2)}
+  .chip{font-size:13px;font-weight:500;background:var(--panel-2);color:var(--muted);border:1px solid var(--line);border-radius:999px;padding:6px 13px;cursor:pointer;transition:all .12s;display:inline-flex;align-items:center;gap:7px}
+  .chip .sw{width:9px;height:9px;border-radius:50%;background:var(--muted-2)}
+  .chip.on{color:var(--ink);border-color:transparent}
+  .chip:hover{border-color:var(--muted-2)}
+  .seg{display:inline-flex;border:1px solid var(--line);border-radius:9px;overflow:hidden}
+  .seg button{background:transparent;color:var(--muted);border:none;padding:7px 12px;font-family:"IBM Plex Mono",monospace;font-size:12px;cursor:pointer}
+  .seg button.on{background:var(--panel-2);color:var(--ink)}
+  .toggle{margin-left:auto;display:inline-flex;align-items:center;gap:8px;color:var(--muted);font-size:12px;cursor:pointer;user-select:none}
+  .toggle input{accent-color:var(--accent)}
+
+  .chartbox{background:var(--panel);border:1px solid var(--line);border-radius:14px;padding:16px 12px 10px;margin-top:14px}
+  .chartwrap{position:relative;height:360px}
+  .stats{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:10px;margin-top:14px}
+  .stat{background:var(--panel);border:1px solid var(--line);border-radius:12px;padding:12px 14px}
+  .stat .h{display:flex;align-items:center;gap:7px;font-size:12px;color:var(--muted);margin-bottom:9px}
+  .stat .h .sw{width:9px;height:9px;border-radius:50%}
+  .stat .grid{display:grid;grid-template-columns:1fr 1fr;gap:6px 12px;font-family:"IBM Plex Mono",monospace;font-size:13px}
+  .stat .k{color:var(--muted-2);font-size:11px}.stat .v{font-weight:600}
+
+  .empty{margin-top:40px;text-align:center;color:var(--muted)}
+  .empty h2{color:var(--ink);font-size:17px;margin:0 0 8px}
+  .empty p{font-size:13px;line-height:1.6;max-width:420px;margin:0 auto}
+  footer{margin-top:26px;color:var(--muted-2);font-size:12px;text-align:center}
+  @media (max-width:520px){.chartwrap{height:290px}.tile .val{font-size:22px}}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header class="top">
+    <div class="brand">Hava<span class="dot">·</span>İstasyonum</div>
+    <div class="meta">
+      <span class="live" id="live" style="display:none"><span class="pulse"></span>canlı</span>
+      <span class="stamp" id="stamp"></span>
+      <button class="refresh" id="refresh">↻ yenile</button>
+    </div>
+  </header>
+
+  <div id="empty" class="empty">
+    <h2>Veri bekleniyor…</h2>
+    <p>İlk ölçümler geldiğinde grafikler burada görünecek. Kurulumdan sonra ilk verinin gelmesi 15–20 dakika sürebilir.</p>
+  </div>
+
+  <div id="dash" style="display:none">
+    <div class="tiles" id="tiles"></div>
+    <div class="panel">
+      <div class="row"><span class="label-min">Değişken</span><span id="chips" style="display:contents"></span></div>
+      <div class="row">
+        <span class="label-min">Aralık</span><div class="seg" id="ranges"></div>
+        <label class="toggle"><input type="checkbox" id="normToggle" /> 0–100% ölçekle</label>
+      </div>
+    </div>
+    <div class="chartbox"><div class="chartwrap"><canvas id="chart"></canvas></div></div>
+    <div class="stats" id="stats"></div>
+  </div>
+
+  <footer>Veri: Weather Underground · 15 dk'da bir otomatik güncellenir</footer>
+</div>
+
+<script>
+"use strict";
+const FIELDS = {
+  temp:{label:"Sıcaklık",unit:"°C",color:"#F2A65A"},
+  hum:{label:"Nem",unit:"%",color:"#5FB3C9"},
+  bar:{label:"Basınç",unit:"hPa",color:"#B08CE0"},
+  wind:{label:"Rüzgar",unit:"m/s",color:"#9BD17C"},
+  gust:{label:"Hamle",unit:"m/s",color:"#7FB85E"},
+  dir:{label:"Rüzgar Yönü",unit:"°",color:"#8FA89B"},
+  rain:{label:"Yağış",unit:"mm",color:"#6C8FE0"},
+  dew:{label:"Çiy Noktası",unit:"°C",color:"#7FC9B0"},
+  uv:{label:"UV",unit:"",color:"#E07A7A"},
+  solar:{label:"Güneş",unit:"W/m²",color:"#E8C45F"},
+};
+const ORDER=["temp","hum","bar","wind","rain","uv","solar","gust","dew","dir"];
+let STORE=null, present=[], selected=new Set(), rangeKey="1", normalize=false, chart=null;
+
+function fmt(v){ if(v==null||isNaN(v)) return "—"; const a=Math.abs(v),d=a>=100?0:a>=10?1:2; return v.toFixed(d);}
+function fmtTime(t){const d=new Date(t),p=n=>String(n).padStart(2,"0");return `${p(d.getDate())}.${p(d.getMonth()+1)} ${p(d.getHours())}:${p(d.getMinutes())}`;}
+
+async function load(){
+  try{
+    const res=await fetch("data/data.json?cb="+Date.now());
+    if(!res.ok) throw 0;
+    const j=await res.json();
+    if(!j.records||j.records.length<1) throw 0;
+    STORE=j; render();
+  }catch(_){ document.getElementById("empty").style.display="block"; document.getElementById("dash").style.display="none"; }
+}
+
+function detectPresent(){
+  present=ORDER.filter(f=> STORE.records.some(r=> r[f]!=null && !isNaN(r[f]) ));
+}
+function filtered(){
+  const r=STORE.records;
+  if(rangeKey==="all") return r;
+  const days=+rangeKey, cut=r[r.length-1].t-days*86400000;
+  return r.filter(x=>x.t>=cut);
+}
+
+function render(){
+  document.getElementById("empty").style.display="none";
+  document.getElementById("dash").style.display="block";
+  document.getElementById("live").style.display="inline-flex";
+  detectPresent();
+  if(selected.size===0) selected.add(present.includes("temp")?"temp":present[0]);
+  const upd=STORE.updated?new Date(STORE.updated):new Date(STORE.records[STORE.records.length-1].t);
+  document.getElementById("stamp").textContent="güncellendi "+fmtTime(upd.getTime());
+  tiles(); chips(); ranges(); draw(); stats();
+}
+
+function tiles(){
+  const last=STORE.records[STORE.records.length-1], box=document.getElementById("tiles"); box.innerHTML="";
+  present.slice(0,6).forEach(f=>{
+    const m=FIELDS[f], el=document.createElement("div"); el.className="tile";
+    el.innerHTML=`<div class="lab">${m.label}</div><div class="val">${fmt(last[f])}<span class="unit">${m.unit}</span></div><div class="bar" style="background:${m.color}"></div>`;
+    box.appendChild(el);
+  });
+}
+function chips(){
+  const box=document.getElementById("chips"); box.innerHTML="";
+  present.forEach(f=>{
+    const m=FIELDS[f], on=selected.has(f), el=document.createElement("button");
+    el.className="chip"+(on?" on":"");
+    el.innerHTML=`<span class="sw" style="background:${on?m.color:''}"></span>${m.label}`;
+    el.onclick=()=>{ on?selected.delete(f):selected.add(f); if(!selected.size)selected.add(f); chips();draw();stats(); };
+    box.appendChild(el);
+  });
+}
+function ranges(){
+  const opts=[{k:"1",t:"24s"},{k:"7",t:"7g"},{k:"30",t:"30g"},{k:"all",t:"Tümü"}];
+  const box=document.getElementById("ranges"); box.innerHTML="";
+  opts.forEach(o=>{ const b=document.createElement("button"); b.textContent=o.t; b.className=rangeKey===o.k?"on":"";
+    b.onclick=()=>{rangeKey=o.k;ranges();draw();stats();}; box.appendChild(b); });
+}
+function draw(){
+  const recs=filtered(), sel=[...selected];
+  const ds=sel.map(f=>{
+    const m=FIELDS[f]; let pts;
+    if(normalize){
+      const vals=recs.map(r=>r[f]).filter(v=>v!=null&&!isNaN(v));
+      const mn=Math.min(...vals),mx=Math.max(...vals),sp=(mx-mn)||1;
+      pts=recs.map(r=>({x:r.t,y:(r[f]==null||isNaN(r[f]))?null:(r[f]-mn)/sp*100,raw:r[f]}));
+    } else pts=recs.map(r=>({x:r.t,y:(r[f]==null||isNaN(r[f]))?null:r[f]}));
+    return {label:m.label+(m.unit?` (${m.unit})`:""),data:pts,borderColor:m.color,backgroundColor:m.color+"22",borderWidth:2,pointRadius:0,pointHoverRadius:4,tension:.25,spanGaps:true};
+  });
+  const cfg={type:"line",data:{datasets:ds},options:{
+    responsive:true,maintainAspectRatio:false,animation:{duration:250},interaction:{mode:"index",intersect:false},
+    plugins:{legend:{display:sel.length>1,labels:{color:"#9aa7b3",usePointStyle:true,boxWidth:8,font:{family:"Space Grotesk"}}},
+      tooltip:{backgroundColor:"#0E1419",borderColor:"#27333D",borderWidth:1,titleColor:"#E8EDF2",bodyColor:"#cdd6de",padding:10,titleFont:{family:"IBM Plex Mono"},bodyFont:{family:"IBM Plex Mono"},
+        callbacks:{title:it=>fmtTime(it[0].parsed.x),label:it=>{const f=sel[it.datasetIndex],m=FIELDS[f],raw=normalize?it.raw?.raw:it.parsed.y;return ` ${m.label}: ${(raw==null||isNaN(raw))?"—":fmt(raw)} ${m.unit}`;}}}},
+    scales:{x:{type:"linear",ticks:{color:"#566472",maxRotation:0,autoSkip:true,maxTicksLimit:7,font:{family:"IBM Plex Mono",size:10},callback:v=>fmtTime(v)},grid:{color:"#1C262F"}},
+      y:{ticks:{color:"#566472",font:{family:"IBM Plex Mono",size:10},callback:v=>normalize?v+"%":v},grid:{color:"#1C262F"}}}}};
+  if(chart)chart.destroy(); chart=new Chart(document.getElementById("chart"),cfg);
+}
+function stats(){
+  const recs=filtered(), box=document.getElementById("stats"); box.innerHTML="";
+  [...selected].forEach(f=>{
+    const m=FIELDS[f], vals=recs.map(r=>r[f]).filter(v=>v!=null&&!isNaN(v)); if(!vals.length)return;
+    const mn=Math.min(...vals),mx=Math.max(...vals),avg=vals.reduce((a,b)=>a+b,0)/vals.length,last=vals[vals.length-1];
+    const el=document.createElement("div"); el.className="stat";
+    el.innerHTML=`<div class="h"><span class="sw" style="background:${m.color}"></span>${m.label}</div>
+      <div class="grid"><div><div class="k">Son</div><div class="v">${fmt(last)} ${m.unit}</div></div>
+      <div><div class="k">Ortalama</div><div class="v">${fmt(avg)} ${m.unit}</div></div>
+      <div><div class="k">En düşük</div><div class="v">${fmt(mn)} ${m.unit}</div></div>
+      <div><div class="k">En yüksek</div><div class="v">${fmt(mx)} ${m.unit}</div></div></div>`;
+    box.appendChild(el);
+  });
+}
+document.getElementById("refresh").onclick=load;
+document.getElementById("normToggle").onchange=e=>{normalize=e.target.checked;draw();};
+load();
+setInterval(load,5*60*1000); // 5 dk'da bir otomatik tazele
+</script>
+</body>
+</html>
