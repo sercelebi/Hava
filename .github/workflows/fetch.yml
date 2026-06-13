@@ -1,9 +1,9 @@
-name: Hava verisi cek
+name: Hava verisi çek
 
 on:
   schedule:
-    - cron: "*/15 * * * *"
-  workflow_dispatch:
+    - cron: "*/10 * * * *"   # her 10 dakikada bir (UTC)
+  workflow_dispatch:          # elle çalıştırmak için
 
 concurrency:
   group: fetch
@@ -17,22 +17,25 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+
       - uses: actions/setup-node@v4
         with:
           node-version: "20"
-      - name: Veriyi cek
+
+      - name: Veriyi çek
         env:
           WU_API_KEY: ${{ secrets.WU_API_KEY }}
           WU_STATION_ID: ${{ secrets.WU_STATION_ID }}
         run: node fetch.js
-      - name: Kaydet
+
+      - name: Değişiklikleri kaydet
         run: |
-          git config user.name "weather-bot"
-          git config user.email "actions@github.com"
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
           git add data/data.json
           if git diff --staged --quiet; then
-            echo "Degisiklik yok."
+            echo "Değişiklik yok."
           else
-            git commit -m "veri guncellendi"
+            git commit -m "veri güncellendi: $(date -u +%Y-%m-%dT%H:%MZ)"
             git push
           fi
