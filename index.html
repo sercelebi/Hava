@@ -54,6 +54,28 @@
   .stat .k{color:var(--muted-2);font-size:11px}.stat .v{font-weight:600}
   .empty{margin-top:40px;text-align:center;color:var(--muted)}.empty h2{color:var(--ink);font-size:17px;margin:0 0 8px}.empty p{font-size:13px;line-height:1.6;max-width:420px;margin:0 auto}
   footer{margin-top:26px;color:var(--muted-2);font-size:12px;text-align:center}
+  /* forecast */
+  .fc{background:var(--panel);border:1px solid var(--line);border-radius:14px;padding:14px 16px;margin-top:16px}
+  .fc-title{font-size:11px;letter-spacing:.08em;text-transform:uppercase;color:var(--muted-2);margin-bottom:10px}
+  .local{display:flex;align-items:center;gap:14px}
+  .local .arrow{font-size:30px;line-height:1;width:34px;text-align:center}
+  .local .txt{flex:1}
+  .local .head{font-size:15px;font-weight:600;color:var(--ink)}
+  .local .sub{font-size:12px;color:var(--muted);font-family:"IBM Plex Mono",monospace;margin-top:3px}
+  .fc-days{display:flex;gap:8px;overflow-x:auto;padding-bottom:4px;-webkit-overflow-scrolling:touch}
+  .day{flex:0 0 auto;min-width:74px;background:var(--panel-2);border:1px solid var(--line);border-radius:11px;padding:10px 8px;text-align:center}
+  .day .dn{font-size:12px;color:var(--muted);font-weight:500}
+  .day .ic{font-size:24px;margin:5px 0;line-height:1}
+  .day .hi{font-family:"IBM Plex Mono",monospace;font-weight:600;font-size:14px}
+  .day .lo{font-family:"IBM Plex Mono",monospace;font-size:12px;color:var(--muted)}
+  .day .rn{font-size:11px;color:#6C8FE0;margin-top:4px;font-family:"IBM Plex Mono",monospace}
+  .locset{display:flex;gap:8px;flex-wrap:wrap;align-items:center}
+  .locset input{background:var(--panel-2);border:1px solid var(--line);color:var(--ink);border-radius:8px;padding:8px 11px;font-family:"Space Grotesk",sans-serif;font-size:13px;flex:1;min-width:120px}
+  .locset button{background:var(--accent);color:var(--bg);border:none;border-radius:8px;padding:8px 13px;font-weight:600;font-size:13px;cursor:pointer}
+  .locset button.alt{background:transparent;color:var(--ink);border:1px solid var(--line)}
+  .loc-line{font-size:12px;color:var(--muted);margin-bottom:10px}
+  .loc-line a{color:var(--accent);cursor:pointer;text-decoration:none}
+  .fc-note{font-size:11px;color:var(--muted-2);margin-top:9px;line-height:1.5}
   @media (max-width:520px){.chartwrap{height:290px}.tile .val{font-size:22px}}
 </style>
 </head>
@@ -72,6 +94,16 @@
 
   <div id="dash" style="display:none">
     <div class="tiles" id="tiles"></div>
+
+    <div class="fc">
+      <div class="fc-title">Yerel eğilim · kendi sensörlerin</div>
+      <div class="local" id="local"><div class="txt"><div class="sub">hesaplanıyor…</div></div></div>
+    </div>
+
+    <div class="fc">
+      <div class="fc-title">5 günlük tahmin · Open-Meteo</div>
+      <div id="fcBody"></div>
+    </div>
     <div class="panel">
       <div class="row"><span class="label-min">Görünüm</span>
         <div class="seg" id="modes"></div>
@@ -149,7 +181,7 @@ function render(){
   const pr=present();if(selected.size===0)selected.add(pr.includes("temp")?"temp":pr[0]);
   const upd=STORE.updated?new Date(STORE.updated):new Date();
   document.getElementById("stamp").textContent="güncellendi "+fmtClock(upd.getTime());
-  tiles();modes();chips();ranges();draw();stats();
+  tiles();localCard();forecastIfNeeded();modes();chips();ranges();draw();stats();
 }
 function tiles(){
   const last=(STORE.records&&STORE.records.length)?STORE.records[STORE.records.length-1]:null;
@@ -213,6 +245,88 @@ function stats(){
       rows.map(([k,v])=>`<div><div class="k">${k}</div><div class="v">${fmt(v)} ${m.unit}</div></div>`).join("")+`</div>`;
     box.appendChild(el);});
 }
+// ---- YEREL EĞİLİM (kendi basınç verinden) ----
+function localCard(){
+  const box=document.getElementById("local"); const r=STORE.records||[];
+  const now=r.length?r[r.length-1]:null;
+  if(!now||now.bar==null){box.innerHTML=`<div class="txt"><div class="sub">basınç verisi bekleniyor…</div></div>`;return;}
+  const target=now.t-3*3600000; let past=null,best=Infinity;
+  for(const x of r){if(x.bar==null)continue;const d=Math.abs(x.t-target);if(d<best){best=d;past=x;}}
+  let delta=null;
+  if(past&&Math.abs(past.t-target)<90*60000&&(now.t-past.t)>45*60000)delta=now.bar-past.bar;
+  let arrow="→",head="Kararlı — belirgin değişiklik beklenmiyor";
+  if(delta==null){arrow="·";head="Eğilim için yeterli veri yok (birkaç saat içinde dolacak)";}
+  else if(delta<=-2){arrow="⤋";head="Basınç hızla düşüyor — yağış/rüzgar yaklaşıyor olabilir";}
+  else if(delta<=-0.7){arrow="↓";head="Basınç düşüyor — hava bozma eğiliminde";}
+  else if(delta<0.7){arrow="→";head="Kararlı — belirgin değişiklik beklenmiyor";}
+  else if(delta<2){arrow="↑";head="Basınç yükseliyor — açma/iyileşme eğilimi";}
+  else{arrow="⤊";head="Basınç hızla yükseliyor — kararlı, açık havaya gidiş";}
+  let extra="";
+  if(now.bar>=1022)extra=" · yüksek basınç, genelde açık";
+  else if(now.bar<=1009)extra=" · alçak basınç, yağışa yatkın";
+  let frost=""; if(now.temp!=null&&now.temp<=3)frost=" ❄️ gece don riski";
+  const ds=delta==null?"—":(delta>0?"+":"")+delta.toFixed(1)+" hPa";
+  box.innerHTML=`<div class="arrow">${arrow}</div><div class="txt">
+    <div class="head">${head}${frost}</div>
+    <div class="sub">3 saatte basınç: ${ds} · şu an ${now.bar.toFixed(1)} hPa${extra}</div></div>`;
+}
+
+// ---- GERÇEK TAHMİN (Open-Meteo) ----
+const WMO={0:["☀️","Açık"],1:["🌤️","Az bulutlu"],2:["⛅","Parçalı bulutlu"],3:["☁️","Bulutlu"],
+  45:["🌫️","Sisli"],48:["🌫️","Sisli"],51:["🌦️","Hafif çiseleme"],53:["🌦️","Çiseleme"],55:["🌧️","Yoğun çiseleme"],
+  56:["🌧️","Donan çiseleme"],57:["🌧️","Donan çiseleme"],61:["🌧️","Hafif yağmur"],63:["🌧️","Yağmur"],65:["🌧️","Şiddetli yağmur"],
+  66:["🌧️","Donan yağmur"],67:["🌧️","Donan yağmur"],71:["🌨️","Hafif kar"],73:["🌨️","Kar"],75:["❄️","Yoğun kar"],
+  77:["🌨️","Kar taneleri"],80:["🌦️","Sağanak"],81:["🌦️","Sağanak"],82:["⛈️","Kuvvetli sağanak"],
+  85:["🌨️","Kar sağanağı"],86:["❄️","Kar sağanağı"],95:["⛈️","Gök gürültülü fırtına"],96:["⛈️","Dolulu fırtına"],99:["⛈️","Dolulu fırtına"]};
+const DAYS_TR=["Paz","Pzt","Sal","Çar","Per","Cum","Cmt"];
+let fcCache={key:"",time:0,html:""}, fcState="\u0000";
+
+// Tahmin HER ZAMAN istasyonun WU'daki sabit konumundan — telefon konumu kullanılmaz
+function stationLoc(){
+  if(STORE && Number.isFinite(STORE.lat) && Number.isFinite(STORE.lon)) return {lat:STORE.lat,lon:STORE.lon};
+  return null;
+}
+function forecastIfNeeded(){
+  const loc=stationLoc(); const key=loc?loc.lat+","+loc.lon:"none";
+  const body=document.getElementById("fcBody");
+  if(key===fcState && body && body.children.length) return; // zaten kurulu
+  forecast();
+}
+function forecast(){
+  const body=document.getElementById("fcBody"); const loc=stationLoc();
+  fcState=loc?loc.lat+","+loc.lon:"none";
+  if(!loc){
+    body.innerHTML=`<div class="fc-note">İstasyon konumu bir sonraki otomatik güncellemede gelecek. Birkaç dakika sonra 5 günlük tahmin burada görünecek.</div>`;
+    return;
+  }
+  body.innerHTML=`<div class="loc-line">📍 İstasyon konumu</div><div id="fcDays" class="fc-days"><div class="sub" style="font-family:'IBM Plex Mono',monospace;color:#7E8B97">tahmin yükleniyor…</div></div>`;
+  loadForecast(loc);
+}
+async function loadForecast(loc){
+  const key=loc.lat+","+loc.lon;
+  if(fcCache.key===key&&Date.now()-fcCache.time<30*60000){document.getElementById("fcDays").innerHTML=fcCache.html;return;}
+  try{
+    const url=`https://api.open-meteo.com/v1/forecast?latitude=${loc.lat}&longitude=${loc.lon}`+
+      `&daily=weather_code,temperature_2m_max,temperature_2m_min,precipitation_sum,precipitation_probability_max`+
+      `&timezone=auto&forecast_days=5`;
+    const res=await fetch(url); const j=await res.json(); const d=j.daily;
+    if(!d||!d.time){throw 0;}
+    let html="";
+    for(let i=0;i<d.time.length;i++){
+      const dt=new Date(d.time[i]+"T00:00"); const wc=WMO[d.weather_code[i]]||["❓",""];
+      const prob=d.precipitation_probability_max?.[i], sum=d.precipitation_sum?.[i];
+      const rain=(prob!=null&&prob>0)?`${prob}%`:(sum>0?`${sum}mm`:"");
+      html+=`<div class="day"><div class="dn">${i===0?"Bugün":DAYS_TR[dt.getDay()]}</div>
+        <div class="ic" title="${wc[1]}">${wc[0]}</div>
+        <div class="hi">${Math.round(d.temperature_2m_max[i])}°</div>
+        <div class="lo">${Math.round(d.temperature_2m_min[i])}°</div>
+        ${rain?`<div class="rn">💧${rain}</div>`:`<div class="rn">&nbsp;</div>`}</div>`;
+    }
+    fcCache={key,time:Date.now(),html};
+    const el=document.getElementById("fcDays"); if(el)el.innerHTML=html;
+  }catch(_){const el=document.getElementById("fcDays"); if(el)el.innerHTML=`<div class="sub" style="color:#E0857A;font-family:'IBM Plex Mono',monospace">Tahmin alınamadı, internet bağlantını kontrol et.</div>`;}
+}
+
 document.getElementById("refresh").onclick=load;
 document.getElementById("normToggle").onchange=e=>{normalize=e.target.checked;draw();};
 load();setInterval(load,5*60*1000);

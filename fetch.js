@@ -108,9 +108,14 @@ async function main() {
     store.days = Object.values(map);
   }
 
-  // Anlık gözlem
+  // Anlık gözlem (+ istasyonun sabit konumu)
   try { const j = await getJSON(`${BASE}/observations/current?stationId=${STATION}&format=json&units=m&apiKey=${API_KEY}`);
-    if (j.observations && j.observations[0]) store.records.push(fromCurrent(j.observations[0]));
+    if (j.observations && j.observations[0]) {
+      const o = j.observations[0];
+      store.records.push(fromCurrent(o));
+      if (o.lat != null) store.lat = +o.lat;
+      if (o.lon != null) store.lon = +o.lon;
+    }
   } catch (e) { console.error("anlık veri alınamadı:", e.message); }
 
   // Ham temizle: geçerli zaman, dakikaya göre tekille, sırala, kırp
