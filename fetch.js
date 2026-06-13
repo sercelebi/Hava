@@ -62,6 +62,15 @@ function dayKey(t) { const d = new Date(t + TZ_OFFSET_MS); const p = (n) => Stri
   return `${d.getUTCFullYear()}-${p(d.getUTCMonth() + 1)}-${p(d.getUTCDate())}`; }
 function dayStart(t) { return Math.floor((t + TZ_OFFSET_MS) / DAY) * DAY - TZ_OFFSET_MS; }
 function ymd(d) { const p = (n) => String(n).padStart(2, "0"); return `${d.getUTCFullYear()}${p(d.getUTCMonth()+1)}${p(d.getUTCDate())}`; }
+function localYmd(t) { const d = new Date(t + TZ_OFFSET_MS); const p = (n) => String(n).padStart(2, "0"); return `${d.getUTCFullYear()}${p(d.getUTCMonth()+1)}${p(d.getUTCDate())}`; }
+
+// Bir günün TÜM ara ölçümlerini WU'dan çekip ham listeye ekler (boşluk doldurma)
+async function fillDay(store, t) {
+  const j = await getJSON(`${BASE}/history/all?stationId=${STATION}&format=json&units=m&date=${localYmd(t)}&apiKey=${API_KEY}`);
+  let n = 0;
+  for (const o of j.observations || []) { store.records.push(fromHistory(o)); n++; }
+  return n;
+}
 
 // Bir günün ham kayıtlarından özet üret
 function aggDay(recs) {
@@ -108,6 +117,9 @@ async function main() {
     store.days = Object.values(map);
   }
 
+  // Son kaydın zamanı (boşluk tespiti için, anlık eklemeden ÖNCE)
+  const lastBefore = store.records.length ? store.records[store.records.length - 1].t : 0;
+
   // Anlık gözlem (+ istasyonun sabit konumu)
   try { const j = await getJSON(`${BASE}/observations/current?stationId=${STATION}&format=json&units=m&apiKey=${API_KEY}`);
     if (j.observations && j.observations[0]) {
@@ -117,6 +129,17 @@ async function main() {
       if (o.lon != null) store.lon = +o.lon;
     }
   } catch (e) { console.error("anlık veri alınamadı:", e.message); }
+
+  // BOŞLUK DOLDURMA: zamanlayıcı geciktiyse, kaçırılan ara ölçümleri WU'dan topla
+  // (zaten ilk kurulumda değilsek ve son kayıttan bu yana >20 dk geçtiyse)
+  if (lastBefore && Date.now() - lastBefore > 20 * 60000) {
+    try {
+      const got = await fillDay(store, Date.now());
+      // boşluk dünden taşıyorsa dünü de doldur
+      if (localYmd(lastBefore) !== localYmd(Date.now())) await fillDay(store, Date.now() - DAY);
+      console.log(`Boşluk dolduruldu (~${Math.round((Date.now()-lastBefore)/60000)} dk, +${got} ölçüm)`);
+    } catch (e) { console.warn("boşluk doldurma atlandı:", e.message); }
+  }
 
   // Ham temizle: geçerli zaman, dakikaya göre tekille, sırala, kırp
   const seen = new Set();
