@@ -107,6 +107,11 @@
     </div>
 
     <div class="fc">
+      <div class="fc-title">Yağmur durumu</div>
+      <div class="local" id="rainStatus"><div class="txt"><div class="sub">hesaplanıyor…</div></div></div>
+    </div>
+
+    <div class="fc">
       <div class="fc-title">5 günlük tahmin · Open-Meteo</div>
       <div id="fcBody"></div>
     </div>
@@ -224,7 +229,7 @@ function render(){
   const pr=present();if(selected.size===0)selected.add(pr.includes("temp")?"temp":pr[0]);
   const upd=STORE.updated?new Date(STORE.updated):new Date();
   document.getElementById("stamp").textContent="güncellendi "+fmtClock(upd.getTime());
-  tiles();localCard();forecastIfNeeded();modes();chips();ranges();draw();stats();windRose();calMetricBtns();calendar();
+  tiles();localCard();rainCard();forecastIfNeeded();modes();chips();ranges();draw();stats();windRose();calMetricBtns();calendar();
 }
 function tiles(){
   const last=(STORE.records&&STORE.records.length)?STORE.records[STORE.records.length-1]:null;
@@ -366,6 +371,41 @@ function calendar(){
   const swatches=(calMetricKey==="temp"?["#5FB3C9","#9BD17C","#F2A65A","#E07A7A"]:["#16202B","#6C8FE0","#2E4BB0"]).map(c=>`<span class="sw" style="background:${c}"></span>`).join("");
   const lab=calMetricKey==="temp"?`${fmt(mn)}°C → ${fmt(mx)}°C`:`0 → ${fmt(mx)} mm`;
   leg.innerHTML=`<span>az</span>${swatches}<span>çok</span> &nbsp; ${lab}`;
+}
+
+// ---- YAĞMUR DURUMU (başlama/durma) ----
+function hm(t){const d=new Date(t);return `${p2(d.getHours())}:${p2(d.getMinutes())}`;}
+function dayLabel(t){const d=new Date(t),n=new Date();const same=(a,b)=>a.getFullYear()===b.getFullYear()&&a.getMonth()===b.getMonth()&&a.getDate()===b.getDate();
+  if(same(d,n))return "bugün";const y=new Date(n);y.setDate(y.getDate()-1);if(same(d,y))return "dün";return `${p2(d.getDate())}.${p2(d.getMonth()+1)}`;}
+function durText(min){if(min<60)return `${min} dk`;const h=Math.floor(min/60),m=min%60;return m?`${h} sa ${m} dk`:`${h} sa`;}
+function rainEvents(){
+  const r=STORE.records||[];if(r.length<2)return [];
+  const GAP=30*60000;let prev=null,cur=null;const events=[];
+  for(let i=0;i<r.length;i++){
+    const x=r[i];let d=0;
+    if(x.rain!=null){if(prev!=null){d=x.rain-prev;if(d<0)d=x.rain;}else d=0;prev=x.rain;}
+    d=+Math.max(0,d).toFixed(2);
+    if(d>0){const startGuess=i>0?r[i-1].t:x.t;
+      if(cur&&x.t-cur.end<=GAP){cur.end=x.t;cur.total=+(cur.total+d).toFixed(2);}
+      else{if(cur)events.push(cur);cur={start:startGuess,end:x.t,total:d};}}
+  }
+  if(cur)events.push(cur);
+  return events;
+}
+function rainCard(){
+  const box=document.getElementById("rainStatus");const r=STORE.records||[];
+  if(!r.length){box.innerHTML=`<div class="txt"><div class="sub">veri yok</div></div>`;return;}
+  const ev=rainEvents().pop();
+  if(!ev){box.innerHTML=`<div class="arrow">☀️</div><div class="txt"><div class="head">Yağış görünmüyor</div><div class="sub">son ~45 günlük kayıtta yağmur yok</div></div>`;return;}
+  const last=r[r.length-1];const raining=(last.t-ev.end)<=15*60000;
+  if(raining){
+    box.innerHTML=`<div class="arrow">🌧️</div><div class="txt"><div class="head">Yağıyor</div>
+      <div class="sub">${dayLabel(ev.start)} ${hm(ev.start)}'de başladı · şu ana kadar ${ev.total.toFixed(1)} mm</div></div>`;
+  }else{
+    const dur=Math.round((ev.end-ev.start)/60000);
+    box.innerHTML=`<div class="arrow">🌦️</div><div class="txt"><div class="head">Şu an yağmıyor</div>
+      <div class="sub">son yağış: ${dayLabel(ev.start)} ${hm(ev.start)}–${hm(ev.end)} · ${ev.total.toFixed(1)} mm${dur>=10?` (${durText(dur)})`:""}</div></div>`;
+  }
 }
 
 // ---- YEREL EĞİLİM (kendi basınç verinden) ----
